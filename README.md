@@ -8,7 +8,7 @@ AI-Powered Research Analytics Platform for Chemistry & Physics researchers.
 - **Project Management**: Create and manage research projects
 - **Interactive Notebook**: Python code execution using Pyodide (runs in browser)
 - **File Management**: Upload, download, and manage files for each project
-- **AI Agent**: Coming in Phase 3 - AI-powered research assistance
+- **AI Agent**: AI-powered research assistance using Google Gemini API
 
 ## Getting Started
 
@@ -41,9 +41,16 @@ npm install
      - `002_notebooks_table.sql`
      - `003_files_storage.sql`
      - `004_storage_setup.sql`
+     - `005_agent_sessions.sql`
    - Create a storage bucket named `project-files` (see `supabase/STORAGE_SETUP.md`)
 
-5. Run the development server:
+5. Set up environment variables:
+   - See `ENV_SETUP.md` for detailed instructions
+   - Frontend: Create `.env.local` in root directory
+   - Backend: Create `.env` in `backend/` directory
+   - Get Gemini API key from https://makersuite.google.com/app/apikey
+
+6. Run the development server:
 ```bash
 npm run dev
 ```
@@ -53,6 +60,14 @@ Open [http://localhost:3000](http://localhost:3000) with your browser.
 ## Backend API
 
 The FastAPI backend is located in the `backend/` directory. See `backend/README.md` for setup instructions.
+
+### Environment Variables
+
+Backend requires:
+- `SUPABASE_URL` - Your Supabase project URL
+- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key
+- `GEMINI_API_KEY` - Google Gemini API key (for AI agent features)
+- `ALLOWED_ORIGINS` - Comma-separated list of allowed CORS origins
 
 ## Project Structure
 
@@ -68,7 +83,7 @@ The FastAPI backend is located in the `backend/` directory. See `backend/README.
 
 - **Phase 1**: ✅ Authentication & User Management
 - **Phase 2**: ✅ Coding Environment (Notebook with Pyodide) & File Storage
-- **Phase 3**: 🚧 AI Agent Implementation (Quiz flow & multi-step execution)
+- **Phase 3**: ✅ AI Agent Implementation (Quiz flow & multi-step execution)
 
 ## Code Execution
 

@@ -60,4 +60,26 @@ export const api = {
         method: 'DELETE',
       }),
   },
+  agent: {
+    analyze: (projectId: string) =>
+      apiRequest<any>(`/api/projects/${projectId}/agent/analyze`, {
+        method: 'POST',
+      }),
+    get: (projectId: string) =>
+      apiRequest<any>(`/api/projects/${projectId}/agent`),
+    updateSteps: (projectId: string, data: { steps: any[] }) =>
+      apiRequest<any>(`/api/projects/${projectId}/agent/steps`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    execute: (projectId: string, stepIndex: number) =>
+      apiRequest<any>(`/api/projects/${projectId}/agent/execute/${stepIndex}`, {
+        method: 'POST',
+      }),
+    chat: (projectId: string, message: string) =>
+      apiRequest<{ response: string }>(`/api/projects/${projectId}/agent/chat`, {
+        method: 'POST',
+        body: JSON.stringify({ message }),
+      }),
+  },
 }

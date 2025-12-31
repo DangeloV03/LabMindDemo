@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import { Suspense } from 'react'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
-import Notebook from '@/components/Notebook'
+import NotebookWithAgentIntegration from '@/components/NotebookWithAgentIntegration'
 import FileUpload from '@/components/FileUpload'
 import FilesList from '@/components/FilesList'
 
@@ -66,10 +67,12 @@ export default async function NotebookPage({
           {/* Notebook */}
           <div className="lg:col-span-3">
             <div className="h-[calc(100vh-14rem)]">
-              <Notebook 
-                projectId={id} 
-                initialContent={notebook}
-              />
+              <Suspense fallback={<div className="text-gray-400 p-8">Loading notebook...</div>}>
+                <NotebookWithAgentIntegration 
+                  projectId={id} 
+                  initialContent={notebook}
+                />
+              </Suspense>
             </div>
           </div>
 

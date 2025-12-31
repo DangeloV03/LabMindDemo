@@ -8,6 +8,14 @@ from supabase import create_client, Client
 from datetime import datetime
 import uuid
 
+# Import Gemini service
+try:
+    from services.gemini_service import GeminiService
+    gemini_service = GeminiService()
+except Exception as e:
+    print(f"Warning: Could not initialize GeminiService: {e}")
+    gemini_service = None
+
 app = FastAPI(title="LabMind API", version="0.1.0")
 
 # CORS middleware
@@ -106,6 +114,46 @@ class FileResponse(BaseModel):
     size: int
     mime_type: Optional[str]
     created_at: str
+
+
+class AgentStep(BaseModel):
+    step_number: int
+    title: str
+    description: str
+    code: str
+    dependencies: List[int] = []
+
+
+class AgentSessionCreate(BaseModel):
+    steps: List[dict]
+
+
+class AgentSessionUpdate(BaseModel):
+    steps: Optional[List[dict]] = None
+    current_step: Optional[int] = None
+    status: Optional[str] = None
+    conversation_history: Optional[List[dict]] = None
+    metadata: Optional[dict] = None
+
+
+class AgentSessionResponse(BaseModel):
+    id: str
+    project_id: str
+    steps: List[dict]
+    current_step: int
+    status: str
+    conversation_history: Optional[List[dict]]
+    metadata: Optional[dict]
+    created_at: str
+    updated_at: str
+
+
+class AgentChatRequest(BaseModel):
+    message: str
+
+
+class AgentChatResponse(BaseModel):
+    response: str
 
 
 # Health check
@@ -449,7 +497,7 @@ async def delete_file(
             )
 
         # Delete from storage
-        supabase.storage.from("project-files").remove([file_record.data["path"]])
+        supabase.storage.from_("project-files").remove([file_record.data["path"]])
 
         # Delete from database
         supabase.table("files").delete().eq("id", file_id).execute()
@@ -461,6 +509,311 @@ async def delete_file(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error deleting file: {str(e)}",
+        )
+
+
+# Agent endpoints
+@app.post("/api/projects/{project_id}/agent/analyze", response_model=AgentSessionResponse, status_code=status.HTTP_201_CREATED)
+async def analyze_research_goal(
+    project_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Analyze quiz responses and create agent session with steps"""
+    try:
+        if not gemini_service:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Gemini service is not available",
+            )
+
+        # Verify project ownership
+        project = (
+            supabase.table("projects")
+            .select("*")
+            .eq("id", project_id)
+            .eq("user_id", current_user["id"])
+            .single()
+            .execute()
+        )
+        if not project.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+            )
+
+        quiz_responses = project.data.get("quiz_responses")
+        if not quiz_responses:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Quiz responses not found. Please complete the quiz first.",
+            )
+
+        # Generate steps using Gemini
+        steps = gemini_service.analyze_research_goal(quiz_responses)
+
+        # Create or update agent session
+        session_data = {
+            "project_id": project_id,
+            "steps": steps,
+            "current_step": 0,
+            "status": "planning",
+            "conversation_history": [],
+        }
+
+        response = (
+            supabase.table("agent_sessions")
+            .upsert(session_data, on_conflict="project_id")
+            .execute()
+        )
+
+        if not response.data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to create agent session",
+            )
+
+        return response.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error analyzing research goal: {str(e)}",
+        )
+
+
+@app.get("/api/projects/{project_id}/agent", response_model=AgentSessionResponse)
+async def get_agent_session(
+    project_id: str, current_user: dict = Depends(get_current_user)
+):
+    """Get agent session for a project"""
+    try:
+        # Verify project ownership
+        project = (
+            supabase.table("projects")
+            .select("*")
+            .eq("id", project_id)
+            .eq("user_id", current_user["id"])
+            .single()
+            .execute()
+        )
+        if not project.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+            )
+
+        # Get agent session
+        response = (
+            supabase.table("agent_sessions")
+            .select("*")
+            .eq("project_id", project_id)
+            .maybe_single()
+            .execute()
+        )
+
+        if not response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Agent session not found"
+            )
+
+        return response.data
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching agent session: {str(e)}",
+        )
+
+
+@app.put("/api/projects/{project_id}/agent/steps", response_model=AgentSessionResponse)
+async def update_agent_steps(
+    project_id: str,
+    update: AgentSessionUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    """Update agent session steps"""
+    try:
+        # Verify project ownership
+        project = (
+            supabase.table("projects")
+            .select("*")
+            .eq("id", project_id)
+            .eq("user_id", current_user["id"])
+            .single()
+            .execute()
+        )
+        if not project.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+            )
+
+        # Update agent session
+        update_data = update.dict(exclude_unset=True)
+        response = (
+            supabase.table("agent_sessions")
+            .update(update_data)
+            .eq("project_id", project_id)
+            .execute()
+        )
+
+        if not response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Agent session not found"
+            )
+
+        return response.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating agent session: {str(e)}",
+        )
+
+
+@app.post("/api/projects/{project_id}/agent/chat", response_model=AgentChatResponse)
+async def chat_with_agent(
+    project_id: str,
+    chat_request: AgentChatRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Chat with the AI agent"""
+    try:
+        if not gemini_service:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Gemini service is not available",
+            )
+
+        # Verify project ownership
+        project = (
+            supabase.table("projects")
+            .select("*")
+            .eq("id", project_id)
+            .eq("user_id", current_user["id"])
+            .single()
+            .execute()
+        )
+        if not project.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+            )
+
+        # Get agent session
+        session_response = (
+            supabase.table("agent_sessions")
+            .select("*")
+            .eq("project_id", project_id)
+            .maybe_single()
+            .execute()
+        )
+
+        if not session_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Agent session not found. Please analyze your research goal first.",
+            )
+
+        session = session_response.data
+        steps = session.get("steps", [])
+        conversation_history = session.get("conversation_history", [])
+
+        # Get AI response
+        ai_response = gemini_service.chat_with_agent(
+            chat_request.message, conversation_history, steps
+        )
+
+        # Update conversation history
+        new_history = conversation_history + [
+            {"role": "user", "content": chat_request.message},
+            {"role": "assistant", "content": ai_response},
+        ]
+
+        # Update session with new conversation history
+        supabase.table("agent_sessions").update(
+            {"conversation_history": new_history}
+        ).eq("project_id", project_id).execute()
+
+        return AgentChatResponse(response=ai_response)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error in agent chat: {str(e)}",
+        )
+
+
+@app.post("/api/projects/{project_id}/agent/execute/{step_index}", response_model=AgentSessionResponse)
+async def execute_agent_step(
+    project_id: str,
+    step_index: int,
+    current_user: dict = Depends(get_current_user),
+):
+    """Execute a specific agent step"""
+    try:
+        # Verify project ownership
+        project = (
+            supabase.table("projects")
+            .select("*")
+            .eq("id", project_id)
+            .eq("user_id", current_user["id"])
+            .single()
+            .execute()
+        )
+        if not project.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+            )
+
+        # Get agent session
+        session_response = (
+            supabase.table("agent_sessions")
+            .select("*")
+            .eq("project_id", project_id)
+            .maybe_single()
+            .execute()
+        )
+
+        if not session_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Agent session not found"
+            )
+
+        session = session_response.data
+        steps = session.get("steps", [])
+
+        if step_index < 0 or step_index >= len(steps):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid step index"
+            )
+
+        # Update session status and current step
+        update_data = {
+            "current_step": step_index,
+            "status": "executing",
+        }
+
+        response = (
+            supabase.table("agent_sessions")
+            .update(update_data)
+            .eq("project_id", project_id)
+            .execute()
+        )
+
+        if not response.data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to update agent session",
+            )
+
+        return response.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error executing agent step: {str(e)}",
         )
 
 

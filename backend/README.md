@@ -45,6 +45,20 @@ All endpoints require authentication via Bearer token (JWT from Supabase).
 
 ## Environment Variables
 
+Create a `.env` file in the `backend/` directory with:
+
 - `SUPABASE_URL` - Your Supabase project URL
 - `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (for backend operations)
-- `ALLOWED_ORIGINS` - Comma-separated list of allowed CORS origins
+- `GEMINI_API_KEY` - Google Gemini API key (required for AI agent features)
+- `ALLOWED_ORIGINS` - Comma-separated list of allowed CORS origins (e.g., `http://localhost:3000,https://your-app.vercel.app`)
+
+See `../ENV_SETUP.md` for detailed setup instructions including production deployment.
+
+## AI Agent Features
+
+The backend includes AI agent endpoints that use Google Gemini API:
+- `POST /api/projects/{project_id}/agent/analyze` - Analyze quiz responses and generate research plan
+- `GET /api/projects/{project_id}/agent` - Get agent session
+- `PUT /api/projects/{project_id}/agent/steps` - Update agent steps
+- `POST /api/projects/{project_id}/agent/execute/{step_index}` - Execute a step
+- `POST /api/projects/{project_id}/agent/chat` - Chat with the AI agent

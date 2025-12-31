@@ -76,29 +76,35 @@ export default async function ProjectDetailPage({
             </p>
           </Link>
 
-          <div className="glass rounded-2xl p-6 border border-white/5 opacity-60">
-            <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <Link
+            href={`/projects/${id}/agent`}
+            className="group glass rounded-2xl p-6 hover:bg-white/[0.04] transition-all duration-300 border border-white/10 hover:border-white/20"
+          >
+            <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center mb-4 group-hover:bg-white/10 transition-colors">
+              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
             </div>
-            <h3 className="text-lg font-semibold text-gray-400 mb-2">AI Agent</h3>
-            <p className="text-gray-500 text-sm">
-              Coming in Phase 3
+            <h3 className="text-lg font-semibold text-white mb-2">AI Agent</h3>
+            <p className="text-gray-400 text-sm">
+              Get AI-powered research assistance
             </p>
-          </div>
+          </Link>
 
-          <div className="glass rounded-2xl p-6 border border-white/5 opacity-60">
-            <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <Link
+            href={`/projects/${id}/quiz`}
+            className="group glass rounded-2xl p-6 hover:bg-white/[0.04] transition-all duration-300 border border-white/10 hover:border-white/20"
+          >
+            <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center mb-4 group-hover:bg-white/10 transition-colors">
+              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
             </div>
-            <h3 className="text-lg font-semibold text-gray-400 mb-2">Quiz</h3>
-            <p className="text-gray-500 text-sm">
-              Coming in Phase 3
+            <h3 className="text-lg font-semibold text-white mb-2">Define Research Goal</h3>
+            <p className="text-gray-400 text-sm">
+              Complete the quiz to get started
             </p>
-          </div>
+          </Link>
         </div>
 
         {/* Project Details */}

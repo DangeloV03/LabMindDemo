@@ -99,6 +99,41 @@ export interface Database {
           created_at?: string
         }
       }
+      agent_sessions: {
+        Row: {
+          id: string
+          project_id: string
+          steps: Json
+          current_step: number
+          status: 'planning' | 'executing' | 'completed' | 'error' | 'paused'
+          conversation_history: Json | null
+          metadata: Json | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          steps?: Json
+          current_step?: number
+          status?: 'planning' | 'executing' | 'completed' | 'error' | 'paused'
+          conversation_history?: Json | null
+          metadata?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          steps?: Json
+          current_step?: number
+          status?: 'planning' | 'executing' | 'completed' | 'error' | 'paused'
+          conversation_history?: Json | null
+          metadata?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
