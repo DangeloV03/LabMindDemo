@@ -358,40 +358,39 @@ export async function POST(req: NextRequest) {
           content: JSON.stringify(result)
         });
       }
+
+      // Get final response with tool results
+      const resultResponse = await anthropic.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [
+          { role: 'user', content: 'Analyze this data using the available tools.' },
+          ...response.content.map(c => c as any), // Cast to handle typed messages
+          ...toolResults.map(c => c as any)
+        ],
+        tools: response.tools // Pass tools again just in case
+      });
+
+      finalResponse = resultResponse.content;
     }
 
-    // Get final response with tool results
-    const resultResponse = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: [
-        { role: 'user', content: 'Analyze this data using the available tools.' },
-        ...response.content.map(c => c as any), // Cast to handle typed messages
-        ...toolResults.map(c => c as any)
-      ],
-      tools: response.tools // Pass tools again just in case
+    // Extract text content
+    const textContent = finalResponse
+      .filter(c => c.type === 'text')
+      .map(c => c.text)
+      .join('\n');
+
+    return NextResponse.json({
+      analysis: textContent,
+      raw: finalResponse
     });
 
-    finalResponse = resultResponse.content;
+  } catch (error: any) {
+    console.error('AI Analysis Error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Internal server error' },
+      { status: 500 }
+    );
   }
-
-// Extract text content
-const textContent = finalResponse
-    .filter(c => c.type === 'text')
-    .map(c => c.text)
-    .join('\n');
-
-  return NextResponse.json({
-    analysis: textContent,
-    raw: finalResponse
-  });
-
-} catch (error: any) {
-  console.error('AI Analysis Error:', error);
-  return NextResponse.json(
-    { error: error.message || 'Internal server error' },
-    { status: 500 }
-  );
-}
 }
