@@ -13,7 +13,7 @@ export default function Navbar() {
 
   useEffect(() => {
     const supabase = createClient()
-    
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
@@ -73,6 +73,12 @@ export default function Navbar() {
                   className="text-gray-400 hover:text-white hover:bg-white/5 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
                 >
                   Projects
+                </Link>
+                <Link
+                  href="/analyze"
+                  className="text-gray-400 hover:text-white hover:bg-white/5 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+                >
+                  Analyze
                 </Link>
               </div>
             )}
@@ -149,6 +155,13 @@ export default function Navbar() {
                 onClick={() => setIsMenuOpen(false)}
               >
                 Projects
+              </Link>
+              <Link
+                href="/analyze"
+                className="text-gray-400 hover:text-white hover:bg-white/5 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Analyze
               </Link>
               <Link
                 href="/profile"
