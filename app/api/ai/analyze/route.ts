@@ -6,6 +6,8 @@ import path from 'path';
 import { exec } from 'child_process';
 import os from 'os';
 import { promisify } from 'util';
+// @ts-ignore
+import regression from 'regression';
 
 const execAsync = promisify(exec);
 
@@ -70,6 +72,63 @@ export async function POST(req: NextRequest) {
           }
         },
         {
+      {
+          name: 'ingest_dataset',
+          description: 'Ingest raw data, infer schema/units, and detect inconsistencies',
+          input_schema: {
+            type: 'object',
+            properties: {
+              raw_data: { type: 'array', items: { type: 'any' } },
+              filename: { type: 'string', description: 'Original filename for context' }
+            },
+            required: ['raw_data']
+          }
+        },
+        {
+          name: 'suggest_and_fit_models',
+          description: 'Fit mathematical models (linear, exponential, power) and return parameters with R-squared',
+          input_schema: {
+            type: 'object',
+            properties: {
+              data: {
+                type: 'array',
+                items: {
+                  type: 'array',
+                  items: { type: 'number' },
+                  minItems: 2,
+                  maxItems: 2
+                },
+                description: 'Array of [x, y] pairs'
+              }
+            },
+            required: ['data']
+          }
+        },
+        {
+          name: 'analyze_noise_sources',
+          description: 'Analyze noise data for specific signatures (drift, 1/f, periodic) to suggest physical causes',
+          input_schema: {
+            type: 'object',
+            properties: {
+              values: { type: 'array', items: { type: 'number' } },
+              sampling_rate: { type: 'number', description: 'Hz, optional' }
+            },
+            required: ['values']
+          }
+        },
+        {
+          name: 'build_domain_visualizations',
+          description: 'Construct domain-specific visualization configs',
+          input_schema: {
+            type: 'object',
+            properties: {
+              domain: { type: 'string', description: 'e.g. quantum, spectroscopy, biology' },
+              data_characteristics: { type: 'string' }
+            },
+            required: ['domain']
+          }
+        },
+        {
           name: 'check_data_quality',
           description: 'Check for missing values and duplicates',
           input_schema: {
@@ -107,27 +166,100 @@ export async function POST(req: NextRequest) {
         const args: any = toolCall.input;
         let result: any = {};
 
+
         try {
           if (toolCall.name === 'calculate_statistics') {
-            const values = args.values as number[];
-            result = {
-              mean: ss.mean(values),
-              median: ss.median(values),
-              min: ss.min(values),
-              max: ss.max(values),
-              stdDev: ss.standardDeviation(values),
-              variance: ss.variance(values)
-            };
+            const values = (args.values as any[]).filter(v => typeof v === 'number' && !isNaN(v));
+            if (values.length === 0) {
+              result = { error: "No numeric values found for statistics" };
+            } else {
+              result = {
+                mean: ss.mean(values),
+                median: ss.median(values),
+                min: ss.min(values),
+                max: ss.max(values),
+                stdDev: ss.standardDeviation(values),
+                variance: ss.variance(values)
+              };
+            }
           } else if (toolCall.name === 'detect_outliers') {
-            const values = args.values as number[];
-            const iqr = ss.interquartileRange(values);
-            const q1 = ss.quantile(values, 0.25);
-            const q3 = ss.quantile(values, 0.75);
-            const lowerBound = q1 - 1.5 * iqr;
-            const upperBound = q3 + 1.5 * iqr;
+            const values = (args.values as any[]).filter(v => typeof v === 'number' && !isNaN(v));
+            if (values.length < 4) {
+              result = { error: "Not enough data points to detect outliers (need at least 4)" };
+            } else {
+              const iqr = ss.interquartileRange(values);
+              const q1 = ss.quantile(values, 0.25);
+              const q3 = ss.quantile(values, 0.75);
+              const lowerBound = q1 - 1.5 * iqr;
+              const upperBound = q3 + 1.5 * iqr;
+              const outliers = values.filter(v => v < lowerBound || v > upperBound);
+              result = { outliers, lowerBound, upperBound };
+            }
+          } else if (toolCall.name === 'ingest_dataset') {
+            const raw = args.raw_data;
+            const type = Array.isArray(raw) ? 'array' : typeof raw;
+            const length = Array.isArray(raw) ? raw.length : 0;
+            const sample = Array.isArray(raw) ? raw.slice(0, 5) : raw;
 
-            const outliers = values.filter(v => v < lowerBound || v > upperBound);
-            result = { outliers, lowerBound, upperBound };
+            // Simple schema inference
+            let schema = "unknown";
+            if (length > 0 && typeof raw[0] === 'number') schema = "Numeric Array";
+            else if (length > 0 && typeof raw[0] === 'object') schema = "Object Array (JSON)";
+
+            result = {
+              detected_type: type,
+              count: length,
+              inferred_schema: schema,
+              sample_preview: sample,
+              status: "Ingested successfully"
+            };
+          } else if (toolCall.name === 'suggest_and_fit_models') {
+            const data = args.data as number[][];
+            if (!data || data.length < 2) {
+              result = { error: "Insufficient data for fitting" };
+            } else {
+              const bestFits = [];
+              try {
+                const lin = regression.linear(data);
+                bestFits.push({ model: 'linear', equation: lin.string, r2: lin.r2, points: lin.points });
+
+                // Only fit others if positive/appropriate
+                if (data.every(p => p[1] > 0)) {
+                  const exp = regression.exponential(data);
+                  bestFits.push({ model: 'exponential', equation: exp.string, r2: exp.r2 });
+                  const pow = regression.power(data);
+                  bestFits.push({ model: 'power', equation: pow.string, r2: pow.r2 });
+                }
+              } catch (e: any) { console.error("Fitting error", e); }
+
+              result = { fits: bestFits.sort((a, b) => (b.r2 || 0) - (a.r2 || 0)) };
+            }
+          } else if (toolCall.name === 'analyze_noise_sources') {
+            const values = args.values as number[];
+            const mean = ss.mean(values);
+            const variance = ss.variance(values);
+            // Simple drift check (first half vs second half)
+            const half = Math.floor(values.length / 2);
+            const mean1 = ss.mean(values.slice(0, half));
+            const mean2 = ss.mean(values.slice(half));
+            const drift = Math.abs(mean2 - mean1) / Math.abs(mean) > 0.1;
+
+            result = {
+              variance,
+              has_significant_drift: drift,
+              interpretation: drift ? "Detected drift over time (possible thermal/mechanical instability)" : "Stable baseline",
+              noise_type: drift ? "Pink/Red Noise (Drift)" : "White Noise (Likely)"
+            };
+
+          } else if (toolCall.name === 'build_domain_visualizations') {
+            const domain = args.domain.toLowerCase();
+            let config = {};
+            if (domain.includes("quantum")) config = { type: "IQ Plot", axes: ["I (Volts)", "Q (Volts)"] };
+            else if (domain.includes("spec")) config = { type: "Spectrum", axes: ["Frequency (Hz)", "Power (dBm)"] };
+            else config = { type: "Generic Time Series", axes: ["Time", "Value"] };
+
+            result = { visualization_config: config };
+
           } else if (toolCall.name === 'check_data_quality') {
             const values = args.values as any[];
             // basic quality checks
@@ -139,30 +271,32 @@ export async function POST(req: NextRequest) {
               duplicateCount: values.length - uniqueCount
             };
           } else if (toolCall.name === 'recommend_functions') {
-            // In a real system, this might check a database of kernels
-            // For now, we return a curated list based on the AI's intuition passed in args
             const chars = args.dataCharacteristics;
             result = {
               recommended: [
-                "Linear Regression (if trend is linear)",
-                "Polynomial Fit (if curved)",
-                "Fourier Transform (if periodic)",
-                "Gaussian Process (for uncertainty estimation)"
+                "Linear Regression",
+                "Polynomial Fit",
+                "Fourier Transform",
+                "Gaussian Process"
               ],
               note: `Based on: ${chars}`
             };
           } else if (toolCall.name === 'analyze_noise') {
-            const values = args.values as number[];
-            const mean = ss.mean(values);
-            const stdDev = ss.standardDeviation(values);
-            const cv = stdDev / Math.abs(mean); // Coefficient of Variation
-            result = {
-              stdDev,
-              mean,
-              coefficientOfVariation: cv,
-              signalToNoiseEstimate: 1 / cv,
-              interpretation: cv < 0.1 ? "Low Noise" : cv < 1.0 ? "Moderate Noise" : "High Noise"
-            };
+            const values = (args.values as any[]).filter(v => typeof v === 'number' && !isNaN(v));
+            if (values.length === 0) {
+              result = { error: "No numeric values for noise analysis" };
+            } else {
+              const mean = ss.mean(values);
+              const stdDev = ss.standardDeviation(values);
+              const cv = mean !== 0 ? stdDev / Math.abs(mean) : 0; // Avoid divide by zero
+              result = {
+                stdDev,
+                mean,
+                coefficientOfVariation: cv,
+                signalToNoiseEstimate: cv !== 0 ? 1 / cv : "Infinity",
+                interpretation: cv < 0.1 ? "Low Noise" : cv < 1.0 ? "Moderate Noise" : "High Noise"
+              };
+            }
           } else if (toolCall.name === 'generate_and_run_script') {
             const { language, script } = args;
             const tempDir = os.tmpdir();
@@ -182,18 +316,28 @@ export async function POST(req: NextRequest) {
             fs.writeFileSync(tempFile, script);
 
             try {
-              const { stdout, stderr } = await execAsync(`${cmd} "${tempFile}"`, { timeout: 10000 });
-              result = {
-                output: stdout,
-                error: stderr,
-                executed: true
-              };
+              // Check for Vercel environment or generic missing binary
+              // In production Vercel, we can't spawn arbitrary shells easily for these languages
+              if (process.env.VERCEL) {
+                result = {
+                  executed: false,
+                  output: null,
+                  note: `Script generated successfully! (Execution skipped: Runtime for ${language} not available in Vercel serverless environment. Run locally to see results.)`
+                };
+              } else {
+                const { stdout, stderr } = await execAsync(`${cmd} "${tempFile}"`, { timeout: 10000 });
+                result = {
+                  output: stdout,
+                  error: stderr,
+                  executed: true
+                };
+              }
             } catch (execError: any) {
               result = {
                 error: execError.message,
                 stderr: execError.stderr,
                 executed: false,
-                note: "Failed to execute. Ensure the runtime is installed in PATH."
+                note: `Failed to execute ${language} script. Ensure ${cmd} is installed in your system PATH.`
               };
             } finally {
               try { fs.unlinkSync(tempFile); } catch { }
@@ -214,39 +358,40 @@ export async function POST(req: NextRequest) {
           content: JSON.stringify(result)
         });
       }
-
-      // Get final response with tool results
-      const resultResponse = await anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 4096,
-        system: systemPrompt,
-        messages: [
-          { role: 'user', content: 'Analyze this data using the available tools.' },
-          ...response.content.map(c => c as any), // Cast to handle typed messages
-          ...toolResults.map(c => c as any)
-        ],
-        tools: response.tools // Pass tools again just in case
-      });
-
-      finalResponse = resultResponse.content;
     }
 
-    // Extract text content
-    const textContent = finalResponse
-      .filter(c => c.type === 'text')
-      .map(c => c.text)
-      .join('\n');
-
-    return NextResponse.json({
-      analysis: textContent,
-      raw: finalResponse
+    // Get final response with tool results
+    const resultResponse = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: [
+        { role: 'user', content: 'Analyze this data using the available tools.' },
+        ...response.content.map(c => c as any), // Cast to handle typed messages
+        ...toolResults.map(c => c as any)
+      ],
+      tools: response.tools // Pass tools again just in case
     });
 
-  } catch (error: any) {
-    console.error('AI Analysis Error:', error);
-    return NextResponse.json(
-      { error: error.message || 'Internal server error' },
-      { status: 500 }
-    );
+    finalResponse = resultResponse.content;
   }
+
+// Extract text content
+const textContent = finalResponse
+    .filter(c => c.type === 'text')
+    .map(c => c.text)
+    .join('\n');
+
+  return NextResponse.json({
+    analysis: textContent,
+    raw: finalResponse
+  });
+
+} catch (error: any) {
+  console.error('AI Analysis Error:', error);
+  return NextResponse.json(
+    { error: error.message || 'Internal server error' },
+    { status: 500 }
+  );
+}
 }

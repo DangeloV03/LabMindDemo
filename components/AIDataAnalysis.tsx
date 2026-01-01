@@ -82,12 +82,13 @@ export default function AIDataAnalysis() {
                         <div className="space-y-2">
                             {[
                                 { id: 'statistical', label: 'Statistical Analysis' },
-                                { id: 'quality', label: 'Data Quality' },
-                                { id: 'outliers', label: 'Outlier Detection' },
+                                { id: 'ingest_dataset', label: 'Start: Ingest & Schema' },
+                                { id: 'suggest_and_fit_models', label: 'Model Discovery (Fit)' },
+                                { id: 'analyze_noise_sources', label: 'Noise Diagnostics' },
+                                { id: 'build_domain_visualizations', label: 'Domain Viz Builder' },
                                 { id: 'function_finding', label: 'Agentic Discovery' },
-                                { id: 'noise', label: 'Noise Analysis' },
+                                { id: 'noise', label: 'Basic Noise Stats' },
                                 { id: 'polyglot', label: 'Polyglot Scripting' },
-                                { id: 'visualization', label: 'Visualization' },
                                 { id: 'insights', label: 'Key Insights' }
                             ].map((type) => (
                                 <button
