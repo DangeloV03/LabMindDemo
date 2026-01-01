@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import AgentStepsView from './AgentStepsView'
 import AgentChat from './AgentChat'
 import { createClient } from '@/lib/supabase/client'
-import { api } from '@/lib/api'
+import { api, API_BASE_URL } from '@/lib/api'
 
 interface AgentDashboardProps {
   projectId: string
@@ -31,40 +31,34 @@ export default function AgentDashboard({ projectId, initialSession }: AgentDashb
   const fetchSession = async () => {
     try {
       setLoading(true)
-      const token = await getAuthToken()
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/projects/${projectId}/agent`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setSession(data)
-      } else if (response.status === 404) {
-        // Session doesn't exist yet, need to analyze - this is expected
-        setSession(null)
-      } else {
-        const errorData = await response.json().catch(() => ({ detail: 'Failed to fetch agent session' }))
-        setError(errorData.detail || `Error ${response.status}: Failed to fetch agent session`)
-      }
+      const data = await api.agent.get(projectId)
+      setSession(data)
     } catch (err: any) {
-      // Network error or backend not running - this is okay if no session exists yet
+      // 404 is expected when no session exists yet - this is fine
+      // Network errors are also okay if no session exists yet
       // We'll show the "Generate Research Plan" button instead
       console.error('Error fetching agent session:', err)
+      
+      // Check if it's a 404 (session doesn't exist) - this is expected
+      const is404 = err.message.includes('404') || err.message.includes('status: 404')
+      if (is404) {
+        setSession(null)
+        return
+      }
+      
       setSession(null)
       // Only show error if we had a session before (which would indicate a real problem)
       if (session) {
-        setError('Failed to connect to backend. Please check if the backend server is running.')
+        const isNetworkError = err.message.includes('fetch') || err.message.includes('Failed to fetch')
+        if (isNetworkError) {
+          setError(`Failed to connect to backend API at ${API_BASE_URL}. Please check if the backend server is running and the NEXT_PUBLIC_API_URL environment variable is configured correctly.`)
+        } else {
+          setError(err.message || 'Failed to fetch agent session')
+        }
       }
     } finally {
       setLoading(false)
     }
-  }
-
-  const getAuthToken = async (): Promise<string | null> => {
-    const { data: { session } } = await supabase.auth.getSession()
-    return session?.access_token || null
   }
 
   useEffect(() => {
@@ -80,29 +74,13 @@ export default function AgentDashboard({ projectId, initialSession }: AgentDashb
     setError(null)
 
     try {
-      const token = await getAuthToken()
-      if (!token) {
-        throw new Error('Not authenticated. Please sign in again.')
-      }
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/projects/${projectId}/agent/analyze`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: 'Failed to analyze research goal' }))
-        throw new Error(errorData.detail || `Error ${response.status}: Failed to analyze research goal`)
-      }
-
-      const data = await response.json()
+      const data = await api.agent.analyze(projectId)
       setSession(data)
     } catch (err: any) {
       console.error('Error analyzing research goal:', err)
-      if (err.message.includes('fetch')) {
-        setError('Failed to connect to backend. Please ensure the backend server is running at http://localhost:8000')
+      const isNetworkError = err.message.includes('fetch') || err.message.includes('Failed to fetch')
+      if (isNetworkError) {
+        setError(`Failed to connect to backend API at ${API_BASE_URL}. Please ensure the backend server is running and the NEXT_PUBLIC_API_URL environment variable is configured correctly.`)
       } else {
         setError(err.message || 'Failed to generate research plan')
       }
@@ -113,17 +91,7 @@ export default function AgentDashboard({ projectId, initialSession }: AgentDashb
 
   const handleStepExecute = async (stepIndex: number) => {
     try {
-      const token = await getAuthToken()
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/projects/${projectId}/agent/execute/${stepIndex}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
-
-      if (!response.ok) throw new Error('Failed to execute step')
-
-      const updatedSession = await response.json()
+      const updatedSession = await api.agent.execute(projectId, stepIndex)
       setSession(updatedSession)
 
       // Navigate to notebook to execute the code
@@ -143,19 +111,7 @@ export default function AgentDashboard({ projectId, initialSession }: AgentDashb
       const updatedSteps = [...(session.steps || [])]
       updatedSteps[stepIndex] = modifiedStep
 
-      const token = await getAuthToken()
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/projects/${projectId}/agent/steps`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ steps: updatedSteps }),
-      })
-
-      if (!response.ok) throw new Error('Failed to update step')
-
-      const updatedSession = await response.json()
+      const updatedSession = await api.agent.updateSteps(projectId, { steps: updatedSteps })
       setSession(updatedSession)
     } catch (err: any) {
       setError(err.message || 'Failed to update step')
@@ -163,22 +119,7 @@ export default function AgentDashboard({ projectId, initialSession }: AgentDashb
   }
 
   const handleChatMessage = async (message: string): Promise<string> => {
-    const token = await getAuthToken()
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/projects/${projectId}/agent/chat`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ message }),
-    })
-
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.detail || 'Failed to get response')
-    }
-
-    const data = await response.json()
+    const data = await api.agent.chat(projectId, message)
     return data.response
   }
 
